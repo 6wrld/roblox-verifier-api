@@ -1,13 +1,16 @@
 import express from "express";
 import crypto from "crypto";
+import fetch from "node-fetch"; // 🔥 needed for Discord API calls
 
 const app = express();
 app.use(express.json());
 
+// === CONFIG ===
+const GUILD_ID = process.env.GUILD_ID || "YOUR_GUILD_ID"; // ⚠️ Replace if testing locally
+const BOT_TOKEN = process.env.BOT_TOKEN || "YOUR_BOT_TOKEN"; // ⚠️ Replace if testing locally
+
 // === Temporary memory stores ===
-// Codes waiting for Roblox input
 const codes = new Map(); // code -> { discordId, expiresAt }
-// Successfully verified users
 const verifiedPlayers = new Map(); // robloxId -> { discordId, booster, verifiedAt }
 
 // === Default route ===
@@ -18,10 +21,8 @@ app.get("/", (req, res) => {
 // === Discord bot: generates code ===
 app.post("/discord/generate", (req, res) => {
   const { discordId } = req.body;
-
   if (!discordId) return res.status(400).json({ error: "Missing discordId" });
 
-  // Generate a random 6-character code
   const code = crypto.randomBytes(3).toString("hex").toUpperCase();
   const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
 
@@ -32,7 +33,7 @@ app.post("/discord/generate", (req, res) => {
 });
 
 // === Roblox verification place: verify code ===
-app.post("/verify-code", (req, res) => {
+app.post("/verify-code", async (req, res) => {
   const { code, robloxId } = req.body;
   const entry = codes.get(code);
 
@@ -40,18 +41,43 @@ app.post("/verify-code", (req, res) => {
     return res.status(404).json({ error: "Invalid or expired code" });
   }
 
-  // Remove used code
-  codes.delete(code);
+  codes.delete(code); // one-time use
 
-  // ✅ Save verified link
+  let isBoosting = false;
+
+  try {
+    // 🟣 Fetch member info from Discord API
+    const response = await fetch(
+      `https://discord.com/api/v10/guilds/${GUILD_ID}/members/${entry.discordId}`,
+      {
+        headers: {
+          "Authorization": `Bot ${BOT_TOKEN}`,
+        },
+      }
+    );
+
+    if (response.ok) {
+      const member = await response.json();
+      isBoosting = !!member.premium_since;
+    } else {
+      console.warn(`⚠️ Failed to fetch Discord member for ${entry.discordId}: ${response.status}`);
+    }
+  } catch (err) {
+    console.error("❌ Discord API error:", err);
+  }
+
+  // ✅ Save verified record
   verifiedPlayers.set(String(robloxId), {
     discordId: entry.discordId,
-    booster: true, // Your bot already checks they’re boosting before code generation
+    booster: isBoosting,
     verifiedAt: Date.now(),
   });
 
-  console.log(`✅ Verified Roblox user ${robloxId} linked to Discord ${entry.discordId}`);
-  res.json({ ok: true, discordId: entry.discordId });
+  console.log(
+    `✅ Verified Roblox user ${robloxId} linked to Discord ${entry.discordId} | Booster: ${isBoosting}`
+  );
+
+  res.json({ ok: true, discordId: entry.discordId, booster: isBoosting });
 });
 
 // === Roblox main game: check verification status ===
