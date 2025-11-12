@@ -1,12 +1,15 @@
 {
   "name": "roblox-verifier-api",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Roblox verification API",
   "type": "module",
-  "dependencies": {
-    "express": "^4.19.2"
-  },
+  "main": "index.js",
   "scripts": {
     "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "crypto": "^1.0.1",
+    "node-fetch": "^3.3.2"
   }
 }
