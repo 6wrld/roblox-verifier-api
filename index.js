@@ -4,36 +4,31 @@ import crypto from "crypto";
 const app = express();
 app.use(express.json());
 
-// Simple in-memory store for verification codes
-const codes = new Map();
+// Temporary in-memory stores
+const codes = new Map();     // code → { discordId, expiresAt }
+const verified = new Map();  // robloxId → discordId
 
-// === ROUTES ===
-
-// default route (for testing)
+// === Default route (testing) ===
 app.get("/", (req, res) => {
-  res.send("✅ Roblox Verifier API is online!");
+  res.send("✅ Roblox Verifier API is online and linked!");
 });
 
-// route your Discord bot calls
+// === Called by Discord bot (/verify) ===
 app.post("/discord/generate", (req, res) => {
   const { discordId } = req.body;
 
-  if (!discordId) {
-    return res.status(400).json({ error: "Missing discordId" });
-  }
+  if (!discordId) return res.status(400).json({ error: "Missing discordId" });
 
   // Generate a random 6-character code
   const code = crypto.randomBytes(3).toString("hex").toUpperCase();
   const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
-
-  // store the code temporarily
   codes.set(code, { discordId, expiresAt });
 
-  console.log(`Generated code ${code} for Discord ID ${discordId}`);
+  console.log(`🔐 Generated code ${code} for Discord ID ${discordId}`);
   res.json({ code, expiresAt });
 });
 
-// route Roblox game will call later
+// === Called by your Roblox verification game ===
 app.post("/verify-code", (req, res) => {
   const { code, robloxId } = req.body;
   const entry = codes.get(code);
@@ -42,16 +37,19 @@ app.post("/verify-code", (req, res) => {
     return res.status(404).json({ error: "invalid or expired code" });
   }
 
-  // remove the code after it’s used
+  // Mark user as verified
   codes.delete(code);
+  verified.set(robloxId, entry.discordId);
 
-  // respond with Discord ID (to link to player)
+  console.log(`✅ Verified Roblox user ${robloxId} linked to Discord ${entry.discordId}`);
   res.json({ ok: true, discordId: entry.discordId });
 });
 
-// route Roblox game can call to check link status
+// === Called by your main game to check status ===
 app.get("/status/:robloxId", (req, res) => {
-  res.json({ verified: false, booster: false });
+  const { robloxId } = req.params;
+  const discordId = verified.get(robloxId);
+  res.json({ verified: !!discordId, discordId: discordId || null });
 });
 
 // === START SERVER ===
