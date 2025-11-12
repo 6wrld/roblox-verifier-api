@@ -1,13 +1,13 @@
 import express from "express";
 import crypto from "crypto";
-import fetch from "node-fetch"; // 🔥 needed for Discord API calls
+import fetch from "node-fetch"; // 🔥 for Discord API calls
 
 const app = express();
 app.use(express.json());
 
 // === CONFIG ===
-const GUILD_ID = process.env.GUILD_ID || "YOUR_GUILD_ID"; // ⚠️ Replace if testing locally
-const BOT_TOKEN = process.env.BOT_TOKEN || "YOUR_BOT_TOKEN"; // ⚠️ Replace if testing locally
+const GUILD_ID = process.env.GUILD_ID || "YOUR_GUILD_ID";
+const BOT_TOKEN = process.env.BOT_TOKEN || "YOUR_BOT_TOKEN";
 
 // === Temporary memory stores ===
 const codes = new Map(); // code -> { discordId, expiresAt }
@@ -46,7 +46,7 @@ app.post("/verify-code", async (req, res) => {
   let isBoosting = false;
 
   try {
-    // 🟣 Fetch member info from Discord API
+    // 🟣 Check if the Discord user is a member of your server
     const response = await fetch(
       `https://discord.com/api/v10/guilds/${GUILD_ID}/members/${entry.discordId}`,
       {
@@ -58,9 +58,19 @@ app.post("/verify-code", async (req, res) => {
 
     if (response.ok) {
       const member = await response.json();
+
+      // ✅ Check if user is boosting
       isBoosting = !!member.premium_since;
+
+      console.log(
+        `🔎 Discord user ${entry.discordId} in guild ${GUILD_ID} | Boosting: ${isBoosting}`
+      );
+    } else if (response.status === 404) {
+      console.warn(`⚠️ Discord user ${entry.discordId} not found in the guild.`);
     } else {
-      console.warn(`⚠️ Failed to fetch Discord member for ${entry.discordId}: ${response.status}`);
+      console.warn(
+        `⚠️ Failed to fetch member ${entry.discordId}: ${response.status}`
+      );
     }
   } catch (err) {
     console.error("❌ Discord API error:", err);
@@ -77,7 +87,11 @@ app.post("/verify-code", async (req, res) => {
     `✅ Verified Roblox user ${robloxId} linked to Discord ${entry.discordId} | Booster: ${isBoosting}`
   );
 
-  res.json({ ok: true, discordId: entry.discordId, booster: isBoosting });
+  res.json({
+    ok: true,
+    discordId: entry.discordId,
+    booster: isBoosting,
+  });
 });
 
 // === Roblox main game: check verification status ===
